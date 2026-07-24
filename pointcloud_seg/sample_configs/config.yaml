@@ -1,0 +1,188 @@
+# ============================================================
+# CellTower Segmenter — sample configuration
+# ============================================================
+
+# ---- paths ----
+raw_dir: pointcloud_seg/data/raw # input raw .las/.laz files
+downsampled_dir: pointcloud_seg/data/downsampled # PDAL Poisson-disk outputs
+cache_dir: pointcloud_seg/data/cache # optional disk cache for precomputed features
+output_dir: pointcloud_seg/data/outputs # model checkpoints, logs
+
+# ---- stage 1: downsampling ----
+downsample_cm: 3 # Poisson-disk radius in centimetres (→ 0.02 m spacing)
+pdal_dataformat: 7 # LAS point format id for PDAL writer
+pdal_workers: 35 # parallel PDAL processes
+
+# ---- stage 2/3: features ----
+num_classes: 5 # 0=Noise 1=TowerBody 2=PanelAntenna 3=MicrowaveDish 4=RRU
+knn_small: 32 # k for small-scale PCA (surface normals, linearity, planarity, scattering)
+knn_large: 96 # k for large-scale PCA (structural context)
+knn_xlarge: 1300 # k for object-scale PCA (~0.6m at 3cm downsample; scattering_o/planarity_o/linearity_o/vert_extent_o: antenna vs RRU)
+num_features: 21 # asserted in build_feature_matrix (17 base + 4 object-scale)
+ground_percentile: 1 # percentile for ground-level z estimation
+# raw classification labels to merge before training/eval (raw -> target).
+# label 5 belongs to TowerBody → fold into class 1; result is 5 classes (0-4).
+merge_labels:
+  '5': 1
+
+# ---- stage 4: super-chunks ----
+chunk_target_points: 150000 # target points per super-chunk column (halved to offset knn_k=32 memory)
+chunk_max_points: 200000 # hard cap per column
+overlap_fraction: 0.5 # 50% overlap between adjacent columns
+point_ceiling: 1500000 # maximum total points per tower (skip if exceeded)
+
+# class-weighted point dropout during training (false by default)
+aug_class_dropout: false
+# extra survival-probability multiplier per class (< 1 = more dropout for that class)
+dropout_class_multipliers:
+  0: 0.25   # TowerBody — heavily drop to counteract dominance
+  1: 0.25   # PanelAntenna — heavily drop to counteract dominance
+# fixed Z-rotation angles (degrees) for offline chunk augmentation in 02_extract_features.py
+offline_aug_rotations: [90, 180, 270]
+
+# ---- stage 5: augmentation (TRAIN only) ----
+aug_rotate_z: true # random Z-axis rotation [0, 2π)
+aug_scale_range:
+  # uniform scale factor range
+  - 0.9
+  - 1.1
+aug_jitter_sigma_m: 0.01 # Gaussian XYZ jitter in metres
+aug_colour_jitter: true # brightness/contrast/hue perturbation
+
+# ---- stage 6/7: inference merge + projection ----
+merge_method: softmax_average # how to combine overlapping chunk predictions
+project_knn: 3 # k neighbours for full-res projection
+
+# DBSCAN cluster-based speckle cleanup (post-processing, off by default)
+use_dbscan_postprocess: true # relabel isolated small clusters to their neighbours' majority class
+dbscan_eps: 0.1 # metres; cluster link distance (~3x the 3cm downsample spacing)
+dbscan_min_samples: 10 # DBSCAN core-point neighbour count
+dbscan_min_cluster_size: 100 # clusters below this many points are treated as speckle
+dbscan_classes: [0, 1, 2, 3, 4] # null = clean all classes; else a list of class ids e.g. [2, 3, 4]
+
+# Ground → Noise reclassification (fix ground predicted as TowerBody)
+use_ground_reclassify: true # relabel near-ground flat points from TowerBody to Noise
+ground_height_thresh: 10 # metres above estimated ground plane to still count as "near ground"
+ground_nz_thresh: 0.85 # |normal.z| above this = flat/horizontal surface (ground, not vertical wall)
+ground_class: 1 # class over-predicted on the ground (TowerBody)
+noise_class: 0 # target class (Noise); ground level estimated from ground_percentile
+
+# Antenna/RRU confusion resolution (fix antenna top/middle/bottom predicted as RRU)
+use_confusion_resolve: false # flip the contiguous RRU continuation of an antenna-dominated cluster
+confusion_eps: 0.5 # joint PanelAntenna+RRU cluster link distance (m)
+confusion_min_samples: 5 # DBSCAN core-point count for the joint clustering
+confusion_dominant_frac: 0.1 # antenna fraction in a cluster needed to reclaim its mislabelled part
+confusion_margin: 1 # max vertical gap (m) bridged when flood-filling up/down the antenna
+antenna_class: 2 # PanelAntenna
+rru_class: 4 # RRU
+
+# ---- model ----
+knn_k: 16 # KNN graph connectivity per EdgeConv stage
+encoder_widths:
+  # feature channel widths per encoder stage
+  - 32
+  - 64
+  - 128
+  - 256
+encoder_depths:
+  # number of EdgeConv blocks per encoder stage
+  - 2
+  - 2
+  - 2
+  - 2
+decoder_depths:
+  # number of EdgeConv blocks per decoder stage
+  - 1
+  - 1
+  - 1
+  - 1
+pool_ratio: 4 # nominal downsampling factor per pooling stage
+num_attention_heads: 4 # multi-head attention at bottleneck
+head_dropout: 0.4 # dropout in segmentation head
+block_dropout: 0.0 # feature dropout inside EVERY EdgeConv block (encoder+decoder); 0.0 = off. Try 0.05–0.1
+se_reduction: 4 # SE block squeeze ratio
+
+# normalization (independent toggles). both on -> LayerNorm then BatchNorm;
+# one on -> just that norm; both off -> no norm. defaults below = current model.
+use_layernorm: false
+use_batchnorm: true
+
+# per-feature input standardization (BatchNorm1d over the 17 raw features) before the
+# embedding Linear. Equalizes heterogeneous input scales + recenters inputs at eval
+# (legacy input-BatchNorm analogue). Default true; set false for the old raw-input forward.
+standardize_input: true
+
+# voxel sizes (metres) for grid pooling at each encoder stage
+# at 2 cm spacing: 0.05 m ≈ ×6 reduction, 0.10 m ≈ ×25, etc.
+pool_voxel_sizes:
+  - 0.025
+  - 0.05
+  - 0.10
+  - 0.20
+
+# ---- rare-class-aware backbone (all values below = the CURRENT model) ----
+# Fix 1 — pooling aggregation: "max" (current) | "meanmax" | "attention"
+pool_type: meanmax
+# Fix 2 — decoder unpool: "nearest" (current) | "interp"
+unpool_type: nearest
+unpool_interp_k: 8        # neighbours for "interp" unpool (must be <= knn_k)
+# Fix 3B — fuse un-pooled level-0 embedding into the head (false = current model)
+head_fuse_fine: false
+
+# ---- optimizer / schedule ----
+optimizer: adamw
+lr: 0.0001
+weight_decay: 0.005
+scheduler: cosine
+warmup_epochs: 5
+max_epochs: 500
+early_stop_patience: 50
+early_stop_metric: train_loss # val_miou | train_miou | train_loss
+
+# ---- checkpoint selection ----
+# Each selector saves its own best_*.pt; early stopping still uses only early_stop_metric.
+save_checkpoints: # val-miou | val-loss | train-loss | train-miou | composite
+  - val-miou
+  - val-loss
+  - train-loss
+  - composite
+# weights for the blended "composite" checkpoint score:
+#   w_miou*val_mIoU + w_vloss*exp(-val_loss) + w_tloss*exp(-train_loss) - w_gap*max(0, train_mIoU - val_mIoU)
+composite_weights:
+  miou: 1.0
+  val_loss: 0.5
+  train_loss: 0.25
+  gap: 0.5
+tta_eval_checkpoint: val-miou # which saved checkpoint the final full-TTA eval loads
+
+# ---- batching ----
+batch_size: 12
+grad_accum_steps: 1
+num_workers: 8
+amp: true
+# drop all-background (Noise/TowerBody) chunks with this probability each epoch (train only)
+skip_bg_chunks: true
+skip_bg_prob: 0.7
+bg_classes: [0, 1]   # 0=Noise, 1=TowerBody
+
+# ---- loss ((weighted CE | focal) + Lovász) ----
+loss_type: ce # ce = weightedcross-entropy | focal = class-weighted focal loss
+focal_gamma: 2 # focal hard-example exponent; 0 == weighted CE (ignored when loss_type=ce)
+loss_ce_weight: 1 # weight on the classification (CE/focal) term
+loss_lovasz_weight: 1 # weight on the Lovász-softmax term
+class_weight_method: log # log | median | inverse  (matches previous arch)
+class_weight_mu: 0.15 # mu in: 1/log(1 + mu + freq)
+label_smoothing: 0.0 # CE label smoothing epsilon; 0.0 = off. Try 0.05–0.1 (applies to loss_type=ce only)
+
+# ---- inference / TTA ----
+use_tta: true # enable test-time augmentation at inference (off by default)
+tta_rotations:
+  - 0
+  - 90
+  - 180
+  - 270
+# ----- logging -----
+mlflow_experiment: celltower_seg
+log_dir: sqlite:///pointcloud_seg/data/mlruns/mlflow.db
+checkpoint_dir: pointcloud_seg/data/checkpoints
+seed: 100

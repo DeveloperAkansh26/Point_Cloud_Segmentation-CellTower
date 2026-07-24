@@ -1,0 +1,25 @@
+# --- excluded per request: run artifacts (9.6 GB) ---
+pointcloud_seg/data/outputs/
+
+# --- python caches ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- machine-specific Claude Code settings (not a secret, but local-only) ---
+.claude/settings.local.json
+
+# --- point-cloud data artifacts (safety net) ---
+*.las
+*.laz
+*.npz
+*.pth
+*.ckpt
+
+# --- env / secret safety net (none exist today, prevents future leaks) ---
+.env
+.env.*
+*.pem
+*.key
+credentials*

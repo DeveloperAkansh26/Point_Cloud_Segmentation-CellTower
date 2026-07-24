@@ -1,0 +1,37 @@
+# ============================================================
+# pointcloud_seg — CellTower Point-Cloud Segmenter dependencies
+# ============================================================
+#
+# System prerequisite (install separately — NOT via pip):
+#   pdal >= 2.6  →  used for Poisson-disk downsampling via subprocess
+#   Install with:  conda install -c conda-forge pdal
+#                  or:  apt install pdal
+#
+# GPU / CUDA:
+#   torch below is the CPU wheel; replace with the appropriate
+#   CUDA build from https://pytorch.org/get-started/locally/
+#   e.g.  pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+# ============================================================
+
+# ---- core numerics ----
+numpy>=1.26,<3.0
+scipy>=1.12
+
+# ---- point-cloud I/O ----
+laspy>=2.7            # read/write LAS/LAZ files
+laszip>=0.2           # LAZ decompression backend for laspy
+
+# ---- deep learning ----
+torch>=2.2            # tested on 2.8.0+cu128
+
+# ---- experiment tracking ----
+mlflow>=2.0
+
+# ---- config ----
+PyYAML>=6.0
+
+# ---- progress bars ----
+tqdm>=4.66
+
+# ---- optional (not imported anywhere currently) ----
+# scikit-learn      # only needed if you add sklearn-based utilities later

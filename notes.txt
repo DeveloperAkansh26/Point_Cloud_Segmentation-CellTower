@@ -1,0 +1,137 @@
+run 1, 2, 3: normal ass shit
+run 4: added dropout multiplier on class 1 and 0, knn in edgeconv increase k = 32 from 16
+run 5 and 6: k = 16 again. dropout stopped. resulted in stabler gradients. 
+run 7: added skipping chunk with reduced chunk size to 150000-200000. chunk size not effecting itna and the loss fxn too.
+run 8: added the augmentation not happen on noise or tower body only chunks, so noise chunks now reduced in general
+        this is done along with the existing skipping chunk thing too (also batchsize = 12)
+
+    - aug and dropout main experiments
+    - chunksize and chunking strat (xy or nearest point)
+    - augmentation stop karke dekhna ke jyada he similar data hora because cell towers are very simialr looking
+    - skipping prob
+    - dropout ke saath again try effect
+    - class weights in loss
+    - loss fxn lovasz
+    - model larger maybe ekdum end me
+    - check proper code re regularization, dropout, gradients kya scene chalra
+    - purani pipeline se cheeje exchange karke check
+    - purani pipeline ke jagah chunks closest points ke according rather than x, y wale splitting
+
+run 9: reintroducing dropout to check its effect if gradients pe dikakt or not due
+        to nulling of vectors label 1 and 0 to dropout uske points
+
+run 10: loss fxn changed to median instead of log --> excellent results
+
+    - lr scheduling change karke try karna might help at later stage i feel
+
+run 11: loss fxn back to log but mu = 0.01 (moderate the aggressiveness of median if 
+            same or better result than median) ---> Very bad results
+    
+
+run 12: In loss fxn ce changed to focal loss (indirect effect of high focal is calculated
+            is also that here the weightage of lovasz is high too so that also getting
+            tested here)
+
+run 13: run 12 me equalize weightage of focal and lovasz, loss_ce_weight = 2
+
+run 14: run 13 me changed loss_ce_weight = 1.75 (same logic last wale run median
+            focal had more weightage so just checking if that was a thing for 
+            why the model performed bad)
+    try2: loss_ce_weight = 1.6
+        
+        - change focal_gamma ek bare to finally check if focal really bad fit here to
+        confirm this fact
+        - after focal or ce decided (focal bad hai finalized and ce locked) change
+        weightage of lovasz to see its effect by inceasing itna
+
+        - try to reduce chunksize, it should improve the predictions a lot right now
+
+
+run 15: reduce the aggressiveness of the focal term [(1-p)^gamma] by making focal_gamma = 1 and 
+            loss_ce_weight = 1.3 ----> not good, validation bahut jaldi fatt gaya. (may try this for
+                                    focal loss again if want to use this or run 14 config again)
+
+run 16: rerun run 10 to confirm it's best performance
+ 
+
+run 17: rerun run 16 T-T (ded inside) (seeded to 42 fixed not proper seed issue)
+run 18: 17 and 18 run parallel with batch size 8, 17-> median weighted ce
+                                                  18-> focal with config of run14
+
+run 19: log method used again in loss fxn
+
+run 20: log method, but seed changed = 100
+
+run 21: pool size change
+
+        - unpool type change
+        - pool_type change
+
+run 22: 21 + pool_type = meanmax
+
+run 23: lr = 0.001 --> bad
+
+run 24: log changed to median method
+
+run 25: old model in new pipeline
+
+run 26: new model layer norm remove batch norm used
+
+run_27: changed some in preprocessing
+
+run_28: full data?
+
+run_29: revert back height input feature change and standardize feature = true
+
+run_30: standardize feature = false
+
+run_31: height fix + standardize feature = true  (BEST TILL NOW!!!!!)
+
+run_32: weight decay on adamW = 0.05 instead of 0.005
+
+run_33: weight decay back to 0.005, lovasz weight of loss = 2
+
+run_34: lovasz weight loss = 1 again and label smothing = 0.075
+
+run_35: complete dropout implement value = 0.1 along with label smothing = 0.0 (lowest val_loss till now)
+
+run_36: dropout = 0.15
+
+run_37: lovasz = 2, label smothing = 0.05, dropout = 0.1, weight decay = 0.03
+
+run_38: lovasz = 2, dropout = 0.1, weight decay = 0.03
+
+run_39: lovasz = 2, dropout = 0.1
+
+run_40: model changes started; encoder_widths:
+                                - 32      # was 64
+                                - 64      # was 128
+                                - 128     # was 256
+                                - 256     # was 512
+
+run_41: small model + dropout=0.1
+
+run_42: smaller model:  encoder_widths:  [64, 128, 256]     # dropped 512           + dropout = 0  (BEST PERFORMANCE)
+                        encoder_depths:  [2, 2, 2]          # dropped one
+                        decoder_depths:  [1, 1, 1]          # dropped one
+                        pool_voxel_sizes: [0.05, 0.10, 0.20]   # dropped 0.20
+
+
+run_43: lovasz = 2
+
+run_44: lovasz = 1, class wieght mu = 0.05
+
+run_45: class weight mu = 0.15 back to normal. dropout = 0.1
+
+run_46: new feature extraction 21 features
+
+run_47: + dropout = 0.1
+
+run_48: model changed to bigger run 40 same. encoder_widths:
+                                                - 32      # was 64
+                                                - 64      # was 128
+                                                - 128     # was 256
+                                                - 256     # was 512
+
+
+
